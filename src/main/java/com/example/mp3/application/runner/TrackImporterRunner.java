@@ -19,7 +19,7 @@ public class TrackImporterRunner implements CommandLineRunner {
             return;
         }
         String csvPath = args[0];
-        service.importFromCsv(csvPath);
+        service.downloadMp3(csvPath);
 
 //
 //        List<Track> tracks = service.getAllTracks();

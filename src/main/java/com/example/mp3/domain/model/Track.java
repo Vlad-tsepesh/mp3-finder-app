@@ -2,12 +2,14 @@ package com.example.mp3.domain.model;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
-@Entity
-@Data
+@Getter
 @Builder
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString
 public class Track {
     @Id
     String trackName;

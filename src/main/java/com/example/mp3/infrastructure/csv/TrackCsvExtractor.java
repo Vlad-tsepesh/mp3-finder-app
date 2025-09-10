@@ -1,11 +1,10 @@
 package com.example.mp3.infrastructure.csv;
 
-import com.example.mp3.domain.model.Track;
+import com.example.mp3.domain.port.out.CsvExtractor;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
 import com.univocity.parsers.common.record.Record;
 import com.univocity.parsers.csv.CsvParser;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.io.FileReader;
