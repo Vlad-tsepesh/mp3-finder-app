@@ -15,28 +15,23 @@ public class TrackRepositoryAdapter implements TrackRepository {
 
 
     @Override
-    public Track saveTrack(Track track) {
-        return jpaTrackRepository.save(track);
+    public void saveTrack(Track track) {
+        jpaTrackRepository.save(track);
     }
 
     @Override
-    public List<Track> saveTracks(List<Track> tracks) {
-        return jpaTrackRepository.saveAll(tracks);
+    public boolean isNewTrack(Track track) {
+        String trackName = track.getTrackName();
+        return jpaTrackRepository.isNewTrack(trackName);
     }
 
     @Override
-    public boolean existsByTrackName(String trackName) {
-        return jpaTrackRepository.existsById(trackName);
-    }
-
-    @Override
-    public boolean haveUrl(String trackName) {
-        return !(jpaTrackRepository.getUrlByTrackName(trackName)==null);
-
-    }
-
-    @Override
-    public List<String> fetchTracksWithEmptyUrl() {
+    public List<Track> fetchTracksWithEmptyUrl() {
         return jpaTrackRepository.fetchTracksWithEmptyUrl();
+    }
+
+    @Override
+    public List<Track> fetchALlTracks() {
+        return jpaTrackRepository.findAll();
     }
 }

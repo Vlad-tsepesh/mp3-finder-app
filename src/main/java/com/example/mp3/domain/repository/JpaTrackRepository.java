@@ -14,8 +14,14 @@ public interface JpaTrackRepository extends JpaRepository<Track, String>{
     String getUrlByTrackName(String trackName);
 
     @Query(value= """
-            SELECT t.trackName FROM Track t
-            WHERE t.url IS NULL
+            SELECT t FROM Track t
+            WHERE t.url IS NULL OR t.url=''
             """)
-    List<String> fetchTracksWithEmptyUrl();
+    List<Track> fetchTracksWithEmptyUrl();
+
+    @Query(value = """
+            SELECT COUNT(t) = 0  FROM Track t
+            WHERE t.trackName != ?1
+            """)
+    boolean isNewTrack(String trackName);
 }

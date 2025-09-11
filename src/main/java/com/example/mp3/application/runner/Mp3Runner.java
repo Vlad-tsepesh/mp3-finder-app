@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class TrackImporterRunner implements CommandLineRunner {
+public class Mp3Runner implements CommandLineRunner {
 
     private final ImportTracksService service;
 
@@ -20,11 +20,6 @@ public class TrackImporterRunner implements CommandLineRunner {
         }
         String csvPath = args[0];
         service.downloadMp3(csvPath);
-
-//
-//        List<Track> tracks = service.getAllTracks();
-//        System.out.println("Imported tracks:");
-//        tracks.forEach(t -> System.out.printf("• %s - %s (downloaded=%s)%n",
-//                t.getTitle(), t.getArtist()));
+//        service.printAllTracks();
     }
 }
