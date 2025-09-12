@@ -5,8 +5,6 @@ import com.example.mp3.domain.model.Track;
 import com.example.mp3.domain.port.out.CsvExtractor;
 import com.example.mp3.domain.port.out.SpotifyClient;
 import com.example.mp3.domain.port.out.TrackRepository;
-import com.example.mp3.infrastructure.client.dto.SpotifyRequest;
-import com.example.mp3.infrastructure.client.dto.SpotifyResponse;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +19,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ImportTracksService {
+public class Mp3Service {
     private final CsvExtractor<TrackCsvDto> csvExtractor;
     private final TrackMapper mapper;
     private final TrackRepository repository;
@@ -29,14 +27,17 @@ public class ImportTracksService {
 
     public void downloadMp3(String filePath) throws IOException {
         importFromCsv(filePath);
-        updateMissingTrackUrls();
+//        updateMissingTrackUrls();
+        repository.fetchALlTracks().forEach( t -> System.out.println(t.getArtists()));
     }
 
     @Transactional
     private void importFromCsv(String filePath) throws IOException {
         validatePath(filePath);
         List<Track> tracks = extractTracks(filePath);
+        log.info("Tracks extracted.");
         saveNewTracks(tracks);
+        log.info("Tracks saved.");
     }
 
     private void validatePath(String filePath) {
@@ -55,16 +56,16 @@ public class ImportTracksService {
                 .forEach(repository::saveTrack);
     }
 
-    @Transactional
-    private void updateMissingTrackUrls() {
-        List<Track> tracks = repository.fetchTracksWithEmptyUrl();
-        tracks.forEach(this::updateTrackUrl);
-        tracks.forEach(repository::saveTrack);
-    }
-
-    private void updateTrackUrl(Track track) {
-        SpotifyRequest request = mapper.fromTrackEntity(track);
-        SpotifyResponse response = spotifyClient.searchTracksUrl(request);
-        track.setUrl(response.uri());
-    }
+//    @Transactional
+//    private void updateMissingTrackUrls() {
+//        List<Track> tracks = repository.fetchTracksWithEmptyUrl();
+//        tracks.forEach(this::updateTrackUrl);
+//        tracks.forEach(repository::saveTrack);
+//    }
+//
+//    private void updateTrackUrl(Track track) {
+//        SpotifyRequest request = mapper.fromTrackEntity(track);
+//        SpotifyResponse response = spotifyClient.searchTracksUrl(request);
+//        track.setUrl(response.uri());
+//    }
 }

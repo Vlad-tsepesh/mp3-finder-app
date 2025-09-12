@@ -1,6 +1,6 @@
 package com.example.mp3.application.runner;
 
-import com.example.mp3.application.service.ImportTracksService;
+import com.example.mp3.application.service.Mp3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class Mp3Runner implements CommandLineRunner {
 
-    private final ImportTracksService service;
+    private final Mp3Service service;
 
     @Override
     public void run(String... args) throws Exception {

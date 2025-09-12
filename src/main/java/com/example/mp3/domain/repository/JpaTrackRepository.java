@@ -24,4 +24,8 @@ public interface JpaTrackRepository extends JpaRepository<Track, String>{
             WHERE t.trackName != ?1
             """)
     boolean isNewTrack(String trackName);
+
+    @Query("SELECT t FROM Track t LEFT JOIN FETCH t.artists")
+    List<Track> findAllWithArtists();
+
 }

@@ -32,6 +32,6 @@ public class TrackRepositoryAdapter implements TrackRepository {
 
     @Override
     public List<Track> fetchALlTracks() {
-        return jpaTrackRepository.findAll();
+        return jpaTrackRepository.findAllWithArtists();
     }
 }
