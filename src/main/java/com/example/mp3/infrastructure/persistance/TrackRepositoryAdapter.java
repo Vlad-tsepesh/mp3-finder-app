@@ -27,11 +27,11 @@ public class TrackRepositoryAdapter implements TrackRepository {
 
     @Override
     public List<Track> fetchTracksWithEmptyUrl() {
-        return jpaTrackRepository.fetchTracksWithEmptyUrl();
+        return jpaTrackRepository.fetchTracksWithEmptyUrlWithArtists();
     }
 
     @Override
     public List<Track> fetchALlTracks() {
-        return jpaTrackRepository.findAllWithArtists();
+        return jpaTrackRepository.findAll();
     }
 }

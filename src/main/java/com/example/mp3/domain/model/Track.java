@@ -9,7 +9,7 @@ import java.util.List;
 @Getter
 @Setter
 @Builder
-@ToString
+@ToString(exclude = "artists")
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity

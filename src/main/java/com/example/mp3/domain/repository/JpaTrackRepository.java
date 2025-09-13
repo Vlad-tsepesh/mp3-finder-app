@@ -6,26 +6,30 @@ import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 
-public interface JpaTrackRepository extends JpaRepository<Track, String>{
-    @Query(value= """
-            SELECT url FROM Track t
-            WHERE t.trackName = ?1
-            """)
+public interface JpaTrackRepository extends JpaRepository<Track, String> {
+
+    @Query("""
+           SELECT t.url FROM Track t
+           WHERE t.trackName = ?1
+           """)
     String getUrlByTrackName(String trackName);
 
-    @Query(value= """
-            SELECT t FROM Track t
-            WHERE t.url IS NULL OR t.url=''
-            """)
-    List<Track> fetchTracksWithEmptyUrl();
+    @Query("""
+           SELECT t FROM Track t
+           LEFT JOIN FETCH t.artists
+           WHERE t.url IS NULL OR t.url = ''
+           """)
+    List<Track> fetchTracksWithEmptyUrlWithArtists();
 
-    @Query(value = """
-            SELECT COUNT(t) = 0  FROM Track t
-            WHERE t.trackName != ?1
-            """)
+    @Query("""
+           SELECT CASE WHEN COUNT(t) = 0 THEN true ELSE false END
+           FROM Track t
+           WHERE t.trackName = ?1
+           """)
     boolean isNewTrack(String trackName);
 
-    @Query("SELECT t FROM Track t LEFT JOIN FETCH t.artists")
+    @Query("""
+           SELECT DISTINCT t FROM Track t LEFT JOIN FETCH t.artists
+           """)
     List<Track> findAllWithArtists();
-
 }

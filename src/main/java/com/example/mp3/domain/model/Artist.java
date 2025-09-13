@@ -11,7 +11,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
+@ToString(exclude = "tracks")
 @Entity
 @Table(name = "artist")
 public class Artist {
@@ -22,6 +22,6 @@ public class Artist {
 
     private String name;
 
-    @ManyToMany(mappedBy = "artists")
-    private List<Track> tracks = new ArrayList<>(); // optional, only if you want bidirectional navigation
+    @ManyToMany(mappedBy = "artists", fetch = FetchType.EAGER)
+    private List<Track> tracks = new ArrayList<>();
 }
