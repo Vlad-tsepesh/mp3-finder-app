@@ -1,6 +1,6 @@
 package com.example.mp3;
 
-import com.example.mp3.domain.model.Artist;
+import com.example.mp3.domain.model.ArtistEntity;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
 
 import java.util.*;
@@ -22,7 +22,7 @@ public class Test {
                 .title("Yamore (feat. Cesária Evora, Benja (NL) & Franc Fala)")
                 .build();
 
-        extractArtists(dto).stream().map(Artist::getName).forEach(System.out::println);
+        extractArtists(dto).stream().map(ArtistEntity::getName).forEach(System.out::println);
     }
 
     static String cleanTitle(String raw) {
@@ -31,7 +31,7 @@ public class Test {
     }
 
 
-    static List<Artist> extractArtists(TrackCsvDto dto) {
+    static List<ArtistEntity> extractArtists(TrackCsvDto dto) {
         if (dto == null) {
             return List.of();
         }
@@ -46,7 +46,7 @@ public class Test {
 
         return splitArtists(combined).stream()
                 .distinct()
-                .map(name -> Artist.builder().name(name).build())
+                .map(name -> ArtistEntity.builder().name(name).build())
                 .toList();
     }
 

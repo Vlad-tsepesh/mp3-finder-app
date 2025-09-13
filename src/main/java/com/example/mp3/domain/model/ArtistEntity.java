@@ -14,7 +14,7 @@ import java.util.List;
 @ToString(exclude = "tracks")
 @Entity
 @Table(name = "artist")
-public class Artist {
+public class ArtistEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,6 +22,8 @@ public class Artist {
 
     private String name;
 
+    private String spotifyId;
+
     @ManyToMany(mappedBy = "artists", fetch = FetchType.EAGER)
-    private List<Track> tracks = new ArrayList<>();
+    private List<TrackEntity> tracks = new ArrayList<>();
 }

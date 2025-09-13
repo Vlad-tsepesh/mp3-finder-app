@@ -14,13 +14,13 @@ import java.util.List;
 @AllArgsConstructor
 @Entity
 @Table(name = "track")
-public class Track {
+public class TrackEntity {
 
     @Id
-    private String trackName; // primary key
+    private String trackName;
 
     private String title;
-    private String url;
+    private String spotifyId;
     private boolean download;
 
     @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
@@ -29,5 +29,5 @@ public class Track {
         joinColumns = @JoinColumn(name = "track_name"), // points to Track
         inverseJoinColumns = @JoinColumn(name = "artist_id") // points to Artist
     )
-    private List<Artist> artists = new ArrayList<>();
+    private List<ArtistEntity> artists = new ArrayList<>();
 }

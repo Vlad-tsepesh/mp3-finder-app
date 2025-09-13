@@ -1,6 +1,6 @@
 package com.example.mp3.domain.service;
 
-import com.example.mp3.domain.model.Artist;
+import com.example.mp3.domain.model.ArtistEntity;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
 import org.mapstruct.Named;
 import org.springframework.stereotype.Service;
@@ -53,10 +53,10 @@ public class TrackNameService {
     }
 
     @Named("buildArtists")
-    public List<Artist> buildArtists(TrackCsvDto dto) {
+    public List<ArtistEntity> buildArtists(TrackCsvDto dto) {
         return splitArtistNames(extractArtistNames(dto)).stream()
                 .distinct()
-                .map(name -> Artist.builder().name(name).build())
+                .map(name -> ArtistEntity.builder().name(name).build())
                 .toList();
     }
 }

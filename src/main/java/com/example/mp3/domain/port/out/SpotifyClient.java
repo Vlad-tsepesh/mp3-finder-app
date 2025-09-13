@@ -1,9 +1,9 @@
 package com.example.mp3.domain.port.out;
 
-import com.example.mp3.infrastructure.client.dto.SpotifyRequest;
-import com.example.mp3.infrastructure.client.dto.SpotifyResponse;
-import reactor.core.publisher.Mono;
+import se.michaelthelin.spotify.model_objects.specification.Track;
+
+import java.util.List;
 
 public interface SpotifyClient {
-    SpotifyResponse searchTracksUrl(SpotifyRequest request);
+    List<Track> searchForTracks(String track);
 }
