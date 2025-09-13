@@ -1,9 +1,10 @@
 package com.example.mp3.application.service;
 
 import com.example.mp3.application.mapper.TrackMapper;
+import com.example.mp3.domain.model.ArtistEntity;
 import com.example.mp3.domain.model.TrackEntity;
 import com.example.mp3.domain.port.out.CsvExtractor;
-import com.example.mp3.domain.port.out.TrackRepository;
+import com.example.mp3.domain.port.out.SpotifyRepository;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,11 +22,13 @@ import java.util.List;
 public class Mp3Service {
     private final CsvExtractor<TrackCsvDto> csvExtractor;
     private final TrackMapper mapper;
-    private final TrackRepository repository;
-    private final SpotifyTrackService spotifyService;
+    private final SpotifyRepository repository;
+    private final SpotifyTrackService trackService;
+    private final SpotifyArtistService artistService;
 
     public void downloadMp3(String filePath) throws IOException {
         importFromCsv(filePath);
+        updateMissingArtistsId();
 //        System.out.println(repository.fetchALlTracks());
 //        updateMissingTracksId();
     }
@@ -64,7 +67,17 @@ public class Mp3Service {
     }
 
     private void updateTrackUrl(TrackEntity entity) {
-        String uriId = spotifyService.findTrackUriId(entity);
+        String uriId = trackService.findTrackUriId(entity);
 //        entity.setUrl(uriId);
+    }
+
+    @Transactional
+    private void updateMissingArtistsId(){
+        List<ArtistEntity> artistEntities = repository.fetchArtistsWithNoSpotifyId();
+        artistEntities.forEach(artist ->{
+                String spotifyId = artistService.findArtistSpotifyId(artist.getName());
+                artist.setSpotifyId(spotifyId);
+                repository.saveArtist(artist);
+        });
     }
 }

@@ -37,12 +37,14 @@ public class SpotifyAdapter implements SpotifyClient {
 
     public List<Artist> findArtistSpotifyId(String artistName) {
         try {
-            return Arrays.stream(spotifyApi
+            List<Artist> artists =  Arrays.stream(spotifyApi
                             .searchArtists(artistName)
                             .build()
                             .execute()
                             .getItems())
                     .toList();
+
+            return artists;
 
         } catch (Exception ex) {
             log.error("Spotify search failed: {}", ex.getMessage());

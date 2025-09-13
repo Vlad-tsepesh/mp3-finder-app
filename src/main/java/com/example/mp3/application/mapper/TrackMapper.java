@@ -14,7 +14,7 @@ public interface TrackMapper {
     @Mapping(target = "title", source = "title", qualifiedByName = "cleanTitle")
     @Mapping(target = "trackName", source = ".", qualifiedByName = "formatTrackName")
     @Mapping(target = "artists", source = ".", qualifiedByName = "buildArtists")
-    @Mapping(target = "url", ignore = true)
+    @Mapping(target = "spotifyId", ignore = true)
     @Mapping(target = "download", constant = "false")
     TrackEntity fromDto(TrackCsvDto dto);
 
