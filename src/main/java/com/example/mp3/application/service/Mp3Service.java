@@ -15,6 +15,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static com.example.mp3.Test.splitArtistNames;
 
 @Slf4j
 @Service
@@ -28,17 +33,17 @@ public class Mp3Service {
 
     public void downloadMp3(String filePath) throws IOException {
         importFromCsv(filePath);
-        updateMissingArtistsId();
-//        System.out.println(repository.fetchALlTracks());
-//        updateMissingTracksId();
+        findAndSaveMissingArtistsSpotifyId();
+////        System.out.println(repository.fetchALlTracks());
+        findAndSaveMissingTracksSpotifyId();
     }
 
     @Transactional
     private void importFromCsv(String filePath) throws IOException {
         validatePath(filePath);
-        List<TrackEntity> tracks = extractTracks(filePath);
+        List<TrackCsvDto> dtos = csvExtractor.extract(filePath);
         log.info("Tracks extracted.");
-        saveNewTracks(tracks);
+        mapAndSaveTracks(dtos);
         log.info("Tracks saved.");
     }
 
@@ -47,9 +52,23 @@ public class Mp3Service {
             throw new IllegalArgumentException("CSV file not found: " + filePath);
     }
 
-    private List<TrackEntity> extractTracks(String filePath) throws IOException {
-        List<TrackCsvDto> tracksDto = csvExtractor.extract(filePath);
-        return mapper.fromTrackDtos(tracksDto);
+    public void mapAndSaveTracks(List<TrackCsvDto> dtos) {
+
+        Set<String> allNames = dtos.stream()
+                .flatMap(dto -> splitArtistNames(dto.artist()).stream())
+                .collect(Collectors.toSet());
+
+        Map<String, ArtistEntity> resolvedArtists = repository.findAllArtistsByNameIn(allNames)
+                .stream()
+                .collect(Collectors.toMap(ArtistEntity::getName, a -> a));
+
+        allNames.forEach(name -> resolvedArtists.computeIfAbsent(
+                name, n -> repository.save(ArtistEntity.builder().name(n).build())
+        ));
+
+        List<TrackEntity> tracks = mapper.fromTrackDtos(dtos, resolvedArtists);
+
+        repository.saveAllTracks(tracks.stream().filter(repository::isNewTrack).toList());
     }
 
     private void saveNewTracks(List<TrackEntity> tracks) {
@@ -59,20 +78,24 @@ public class Mp3Service {
     }
 
     @Transactional
-    private void updateMissingTracksId() {
+    private void findAndSaveMissingTracksSpotifyId() {
         List<TrackEntity> tracks = repository.fetchTracksWithMissingSpotifyId();
         tracks.forEach(this::updateTrackUrl);
-        tracks.forEach(repository::saveTrack);
+        repository.saveAllTracks(tracks);
         log.info("UpdateMissingTrackUrls done.");
     }
 
     private void updateTrackUrl(TrackEntity entity) {
-        String uriId = trackService.findTrackUriId(entity);
-//        entity.setUrl(uriId);
+        String spotifyId = trackService.findTrackUriId(entity);
+
+//        if (spotifyId.isBlank()) {
+//            spotifyId = trackService.findTrackUriIdByArtistId(entity);
+//        }
+        entity.setSpotifyId(spotifyId);
     }
 
     @Transactional
-    private void updateMissingArtistsId(){
+    private void findAndSaveMissingArtistsSpotifyId(){
         List<ArtistEntity> artistEntities = repository.fetchArtistsWithNoSpotifyId();
         artistEntities.forEach(artist ->{
                 String spotifyId = artistService.findArtistSpotifyId(artist.getName());

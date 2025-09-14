@@ -1,5 +1,6 @@
 package com.example.mp3.application.service;
 
+import com.example.mp3.domain.port.out.SpotifyClient;
 import com.example.mp3.infrastructure.client.SpotifyAdapter;
 import com.example.mp3.utils.Matcher;
 import lombok.RequiredArgsConstructor;
@@ -9,10 +10,10 @@ import se.michaelthelin.spotify.model_objects.specification.Artist;
 @Service
 @RequiredArgsConstructor
 public class SpotifyArtistService {
-    private final SpotifyAdapter spotifyAdapter;
+    private final SpotifyClient spotifyClient;
 
     public String findArtistSpotifyId(String artistName){
-        return spotifyAdapter.findArtistSpotifyId(artistName).stream()
+        return spotifyClient.findArtistSpotifyId(artistName).stream()
                 .filter(response -> matchByName(response.getName(), artistName))
                 .map(Artist::getId).findFirst().orElse("");
     }

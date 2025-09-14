@@ -2,11 +2,13 @@ package com.example.mp3.domain.service;
 
 import com.example.mp3.domain.model.ArtistEntity;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
+import org.mapstruct.Context;
 import org.mapstruct.Named;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -46,17 +48,18 @@ public class TrackNameService {
     }
 
     private List<String> splitArtistNames(String artist) {
-        return Arrays.stream(artist.split("[,&]"))
+        return Arrays.stream(artist.split("(?i)\\s*(?:,|&|feat\\.?|uring|vs\\.?)\\s*"))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
     }
 
     @Named("buildArtists")
-    public List<ArtistEntity> buildArtists(TrackCsvDto dto) {
-        return splitArtistNames(extractArtistNames(dto)).stream()
-                .distinct()
-                .map(name -> ArtistEntity.builder().name(name).build())
+    public List<ArtistEntity> buildArtists(TrackCsvDto dto, @Context Map<String, ArtistEntity> resolvedArtists) {
+        List<String> artistNames = splitArtistNames(extractArtistNames(dto));
+        return artistNames.stream()
+                .map(resolvedArtists::get)
+                .filter(Objects::nonNull)
                 .toList();
     }
 }

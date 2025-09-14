@@ -6,10 +6,13 @@ import com.example.mp3.domain.repository.JpaArtistRepository;
 import com.example.mp3.domain.repository.JpaTrackRepository;
 import com.example.mp3.domain.port.out.SpotifyRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
+@Slf4j
 @Repository
 @RequiredArgsConstructor
 public class RepositoryAdapter implements SpotifyRepository {
@@ -52,4 +55,21 @@ public class RepositoryAdapter implements SpotifyRepository {
     public ArtistEntity saveArtist(ArtistEntity artist) {
         return jpaArtistRepository.save(artist);
     }
+
+    @Override
+    public List<ArtistEntity> findAllArtistsByNameIn(Collection<String> names) {
+        return jpaArtistRepository.findAllByName(names);
+    }
+
+    @Override
+    public ArtistEntity save(ArtistEntity build) {
+        return jpaArtistRepository.save(build);
+    }
+
+    @Override
+    public void saveAllTracks(List<TrackEntity> tracks) {
+        jpaTrackRepository.saveAll(tracks);
+        log.info("Saved all tracks.");
+    }
+
 }

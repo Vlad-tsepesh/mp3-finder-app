@@ -12,6 +12,8 @@ import java.util.stream.Stream;
 public class Test {
     public static void main(String[] args) {
 
+        System.out.println(splitArtistNames("Drake, Travis Scott feat. feat. Future & 21 Savage vs. Lil Wayne featuring Rick Ross"
+        ));
 //        System.out.println(cleanTitle("Yamore (feat. Cesária Evora, Benja (NL) & Franc Fala)"));
 //        System.out.println(extractArtistsFromTitle("Yamore"));
 //        System.out.println((long) splitArtists("MoBlack & Salif Keïta").size());
@@ -69,6 +71,15 @@ public class Test {
             return Optional.of(matcher.group(1).trim());
         }
         return Optional.empty();
+    }
+
+    public static List<String> splitArtistNames(String artist) {
+        return Arrays.stream(
+                        artist.split("(?i)\\s*(?:,|&|feat\\.?|uring|vs\\.?)\\s*")
+                )
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
 }
