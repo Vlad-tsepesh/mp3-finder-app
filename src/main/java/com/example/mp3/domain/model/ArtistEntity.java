@@ -11,17 +11,20 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
+@ToString(exclude = "tracks")
 @Entity
 @Table(name = "artist")
-public class Artist {
+public class ArtistEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true)
     private String name;
 
-    @ManyToMany(mappedBy = "artists")
-    private List<Track> tracks = new ArrayList<>(); // optional, only if you want bidirectional navigation
+    private String spotifyId;
+
+    @ManyToMany(mappedBy = "artists", fetch = FetchType.EAGER)
+    private List<TrackEntity> tracks = new ArrayList<>();
 }

@@ -1,0 +1,985 @@
+package com.example.mp3.application.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**")) // allow H2 console
+                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin)) // allow frames
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/h2-console/**").permitAll()
+                        .anyRequest().authenticated()
+                );
+
+        return http.build();
+    }
+}
+package com.example.mp3.application.mapper;
+
+import com.example.mp3.domain.model.ArtistEntity;
+import com.example.mp3.domain.model.TrackEntity;
+import com.example.mp3.domain.service.TrackNameService;
+import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
+import org.mapstruct.Context;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+
+import java.util.List;
+import java.util.Map;
+
+@Mapper(componentModel = "spring", uses = TrackNameService.class)
+public interface TrackMapper {
+
+    @Mapping(target = "title", source = "title", qualifiedByName = "cleanTitle")
+    @Mapping(target = "trackName", source = ".", qualifiedByName = "formatTrackName")
+    @Mapping(target = "artists", source = ".", qualifiedByName = "buildArtists")
+    @Mapping(target = "spotifyId", ignore = true)
+    @Mapping(target = "download", constant = "false")
+    TrackEntity fromDto(TrackCsvDto dto, @Context Map<String, ArtistEntity> resolvedArtists);
+
+    List<TrackEntity> fromTrackDtos(List<TrackCsvDto> dto, @Context Map<String, ArtistEntity> resolvedArtists);
+}
+package com.example.mp3.application.runner;
+
+import com.example.mp3.application.service.Mp3Service;
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
+
+
+@Component
+@RequiredArgsConstructor
+public class Mp3Runner implements CommandLineRunner {
+
+    private final Mp3Service service;
+
+    @Override
+    public void run(String... args) throws Exception {
+        if (args.length == 0) {
+            System.out.println("Usage: java -jar app.jar <path-to-csv>");
+            return;
+        }
+        String csvPath = args[0];
+        service.downloadMp3(csvPath);
+//        service.printAllTracks();
+    }
+}
+
+package com.example.mp3.application.service;
+
+import com.example.mp3.application.mapper.TrackMapper;
+import com.example.mp3.domain.model.ArtistEntity;
+import com.example.mp3.domain.model.TrackEntity;
+import com.example.mp3.domain.port.out.CsvExtractor;
+import com.example.mp3.domain.port.out.SpotifyRepository;
+import com.example.mp3.domain.service.TrackNameService;
+import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class Mp3Service {
+    private final CsvExtractor<TrackCsvDto> csvExtractor;
+    private final TrackMapper mapper;
+    private final SpotifyRepository repository;
+    private final SpotifyTrackService trackService;
+    private final SpotifyArtistService artistService;
+    private final TrackNameService trackNameService;
+
+    public void downloadMp3(String filePath) throws IOException {
+        importFromCsv(filePath);
+        findAndSaveMissingArtistsSpotifyId();
+////        System.out.println(repository.fetchALlTracks());
+        findAndSaveMissingTracksSpotifyId();
+    }
+
+    @Transactional
+    private void importFromCsv(String filePath) throws IOException {
+        validatePath(filePath);
+        List<TrackCsvDto> dtos = csvExtractor.extract(filePath);
+        log.info("Tracks extracted.");
+        mapAndSaveTracks(dtos);
+        log.info("Tracks saved.");
+    }
+
+    private void validatePath(String filePath) {
+        if (!Files.exists(Paths.get(filePath)))
+            throw new IllegalArgumentException("CSV file not found: " + filePath);
+    }
+
+    public void mapAndSaveTracks(List<TrackCsvDto> dtos) {
+
+        Set<String> allNames = dtos.stream()
+                .flatMap(dto -> trackNameService.splitArtistNames(dto.artist()).stream())
+                .collect(Collectors.toSet());
+
+        Map<String, ArtistEntity> resolvedArtists = repository.findAllArtistsByNameIn(allNames)
+                .stream()
+                .collect(Collectors.toMap(ArtistEntity::getName, a -> a));
+
+        allNames.forEach(name -> resolvedArtists.computeIfAbsent(
+                name, n -> repository.save(ArtistEntity.builder().name(n).build())
+        ));
+
+        List<TrackEntity> tracks = mapper.fromTrackDtos(dtos, resolvedArtists);
+
+        repository.saveAllTracks(tracks.stream().filter(repository::isNewTrack).toList());
+    }
+
+    private void saveNewTracks(List<TrackEntity> tracks) {
+        tracks.stream()
+                .filter(repository::isNewTrack)
+                .forEach(repository::saveTrack);
+    }
+
+    @Transactional
+    private void findAndSaveMissingTracksSpotifyId() {
+        List<TrackEntity> tracks = repository.fetchTracksWithMissingSpotifyId();
+        tracks.forEach(this::updateTrackUrl);
+        repository.saveAllTracks(tracks);
+        log.info("UpdateMissingTrackUrls done.");
+    }
+
+    private void updateTrackUrl(TrackEntity entity) {
+        String spotifyId = trackService.findTrackUriId(entity);
+
+//        if (spotifyId.isBlank()) {
+//            spotifyId = trackService.findTrackUriIdByArtistId(entity);
+//        }
+        entity.setSpotifyId(spotifyId);
+    }
+
+    @Transactional
+    private void findAndSaveMissingArtistsSpotifyId(){
+        List<ArtistEntity> artistEntities = repository.fetchArtistsWithNoSpotifyId();
+        artistEntities.forEach(artist ->{
+                String spotifyId = artistService.findArtistSpotifyId(artist.getName());
+                artist.setSpotifyId(spotifyId);
+                repository.saveArtist(artist);
+        });
+    }
+}
+
+package com.example.mp3.application.service;
+
+import com.example.mp3.domain.port.out.SpotifyClient;
+import com.example.mp3.infrastructure.client.SpotifyAdapter;
+import com.example.mp3.utils.Matcher;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import se.michaelthelin.spotify.model_objects.specification.Artist;
+
+@Service
+@RequiredArgsConstructor
+public class SpotifyArtistService {
+    private final SpotifyClient spotifyClient;
+
+    public String findArtistSpotifyId(String artistName){
+        return spotifyClient.findArtistSpotifyId(artistName).stream()
+                .filter(response -> matchByName(response.getName(), artistName))
+                .map(Artist::getId).findFirst().orElse("");
+    }
+
+    private boolean matchByName(String responseName, String expectedName) {
+        return Matcher.similarity(responseName, expectedName) > 0.95;
+    }
+}
+
+package com.example.mp3.application.service;
+
+import com.example.mp3.domain.model.ArtistEntity;
+import com.example.mp3.domain.model.TrackEntity;
+import com.example.mp3.domain.port.out.SpotifyClient;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
+import se.michaelthelin.spotify.model_objects.specification.Track;
+
+import java.util.AbstractMap;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import static com.example.mp3.utils.Matcher.similarity;
+
+@Service
+@RequiredArgsConstructor
+public class SpotifyTrackService {
+
+    private static final AtomicInteger passedTracks = new AtomicInteger(0); //for debugging
+    private static final double MATCH_THRESHOLD = 0.7;
+    private final SpotifyClient spotifyClient;
+
+    public String findTrackUriId(TrackEntity entity) {
+        List<Track> spotifyTracks = spotifyClient.searchForTracks(entity.getTrackName());
+        Optional<Track> bestMatch = findBestMatch(entity, spotifyTracks);
+        bestMatch.ifPresent(track -> printBestMatches(track, entity));
+        return bestMatch.stream().map(Track::getId).collect(Collectors.joining());
+    }
+
+    public String findTrackUriIdByArtistId(TrackEntity entity) {
+        return entity.getArtists().stream()
+                .map(ArtistEntity::getSpotifyId)
+                .filter(s -> !s.isEmpty() )
+                .map(spotifyClient::fetchSpotifyTrackById)
+                .map(response -> findBestMatch(entity, response))
+                .flatMap(Optional::stream)
+                .peek(track -> printBestMatches(track, entity))
+                .map(Track::getId)
+                .findFirst().orElse("");
+    }
+
+    private Optional<Track> findBestMatch(TrackEntity entity, List<Track> tracks) {
+
+        return tracks.stream()
+                .filter(track -> similarity(entity.getTitle(), track.getName()) > 0.70)
+                .filter(track -> similarity(formatArtists(entity), formatArtists(track)) > 0.65)
+//                .filter(track -> similarity(entity.getTrackName(), formatTrackName(track)) > 0.85)
+                .map(track -> {
+                    double fullScore = similarity(entity.getTrackName(), formatTrackName(track));
+                    return new AbstractMap.SimpleEntry<>(track, fullScore);
+                })
+
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey);
+
+    }
+
+    // debugging method
+    private void printBestMatches(Track track, TrackEntity entity) {
+        int currentCount = passedTracks.incrementAndGet();
+        System.out.println(currentCount);
+        System.out.println(entity.getTrackName());
+        System.out.println(formatTrackName(track));
+        System.out.println("-------------------------------------------------------------------------------------------");
+    }
+
+    private String formatTrackName(Track track) {
+        return track.getName() + " - " + joinNames(Arrays.asList(track.getArtists()), ArtistSimplified::getName);
+    }
+
+    private String formatArtists(TrackEntity entity) {
+        return joinNames(entity.getArtists(), ArtistEntity::getName);
+    }
+
+    private String formatArtists(Track response) {
+        return joinNames(Arrays.asList(response.getArtists()), ArtistSimplified::getName);
+    }
+
+    private <T> String joinNames(Collection<T> items, Function<T, String> nameExtractor) {
+        return items.stream()
+                .map(nameExtractor)
+                .collect(Collectors.joining(", "));
+    }
+}
+package com.example.mp3.domain.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString(exclude = "tracks")
+@Entity
+@Table(name = "artist")
+public class ArtistEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(unique = true)
+    private String name;
+
+    private String spotifyId;
+
+    @ManyToMany(mappedBy = "artists", fetch = FetchType.EAGER)
+    private List<TrackEntity> tracks = new ArrayList<>();
+}
+package com.example.mp3.domain.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Getter
+@Setter
+@Builder
+@ToString(exclude = "artists")
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "track")
+public class TrackEntity {
+
+    @Id
+    private String trackName;
+
+    private String title;
+    private String spotifyId;
+    private boolean download;
+
+    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(
+        name = "track_artist", // join table
+        joinColumns = @JoinColumn(name = "track_name"), // points to Track
+        inverseJoinColumns = @JoinColumn(name = "artist_id") // points to Artist
+    )
+    private List<ArtistEntity> artists = new ArrayList<>();
+}
+package com.example.mp3.domain.port.out;
+
+import java.io.IOException;
+import java.util.List;
+
+public interface CsvExtractor<T> {
+    List<T> extract(String csvFile) throws IOException;
+}
+package com.example.mp3.domain.port.out;
+
+import se.michaelthelin.spotify.model_objects.specification.Artist;
+import se.michaelthelin.spotify.model_objects.specification.Track;
+
+import java.util.List;
+
+public interface SpotifyClient {
+    List<Track> searchForTracks(String track);
+
+    List<Track> fetchSpotifyTrackById(String artistId);
+
+    List<Artist> findArtistSpotifyId(String artistName);
+}
+
+package com.example.mp3.domain.port.out;
+
+import com.example.mp3.domain.model.ArtistEntity;
+import com.example.mp3.domain.model.TrackEntity;
+
+import java.util.Collection;
+import java.util.List;
+
+public interface SpotifyRepository {
+    void saveTrack(TrackEntity track);
+
+    boolean isNewTrack(TrackEntity track);
+
+    List<TrackEntity> fetchTracksWithMissingSpotifyId();
+
+    List<TrackEntity> fetchALlTracks();
+
+    List<ArtistEntity> fetchArtistsWithNoSpotifyId();
+
+    List<ArtistEntity> fetchAllArtists();
+
+    ArtistEntity saveArtist(ArtistEntity artist);
+
+    List<ArtistEntity> findAllArtistsByNameIn(Collection<String> names);
+
+    ArtistEntity save(ArtistEntity build);
+
+    void saveAllTracks(List<TrackEntity> tracks);
+}
+package com.example.mp3.domain.repository;
+
+import com.example.mp3.domain.model.ArtistEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+public interface JpaArtistRepository extends JpaRepository<ArtistEntity, Long> {
+
+    @Query("""
+           SELECT a FROM ArtistEntity a
+           WHERE a.spotifyId IS NULL OR a.spotifyId = ''
+           """)
+    List<ArtistEntity> fetchArtistsWithMissingSpotifyID();
+
+    @Query("SELECT a FROM ArtistEntity a WHERE a.name IN :names")
+    List<ArtistEntity> findAllByName(@Param("names") Collection<String> names);
+}
+package com.example.mp3.domain.repository;
+
+import com.example.mp3.domain.model.TrackEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import java.util.List;
+
+public interface JpaTrackRepository extends JpaRepository<TrackEntity, String> {
+
+    @Query("""
+           SELECT t.spotifyId FROM TrackEntity t
+           WHERE t.trackName = ?1
+           """)
+    String getUrlByTrackName(String trackName);
+
+    @Query("""
+           SELECT DISTINCT t FROM TrackEntity t
+           LEFT JOIN FETCH t.artists
+           WHERE t.spotifyId IS NULL OR t.spotifyId = ''
+           """)
+    List<TrackEntity> fetchTracksWithMissingSpotifyIdWithArtists();
+
+    @Query("""
+           SELECT CASE WHEN COUNT(t) = 0 THEN true ELSE false END
+           FROM TrackEntity t
+           WHERE t.trackName = ?1
+           """)
+    boolean isNewTrack(String trackName);
+
+    @Query("""
+           SELECT DISTINCT t FROM TrackEntity t LEFT JOIN FETCH t.artists
+           """)
+    List<TrackEntity> findAllWithArtists();
+}
+package com.example.mp3.domain.service;
+
+import com.example.mp3.domain.model.ArtistEntity;
+import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
+import org.mapstruct.Context;
+import org.mapstruct.Named;
+import org.springframework.stereotype.Service;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+@Service
+public class TrackNameService {
+    private static final Pattern FEAT_PATTERN = Pattern.compile("\\(feat\\.\\s*((?:[^()]*|\\([^()]*\\))*)\\)");
+
+    @Named("formatTrackName")
+    public String formatTrackName(TrackCsvDto dto) {
+        return dto.title() + " - " + dto.artist();
+    }
+
+    @Named("cleanTitle")
+    public String cleanTitle(String raw) {
+        if (raw == null) return null;
+        return Arrays.stream(raw.split("\\(feat\\.")).findFirst().orElse(raw).trim();
+    }
+
+    private Optional<String> extractFeaturedArtists(String title) {
+        if (title == null) return Optional.empty();
+        Matcher matcher = FEAT_PATTERN.matcher(title);
+        if (matcher.find()) return Optional.of(matcher.group(1).trim());
+        return Optional.empty();
+    }
+
+    private String extractArtistNames(TrackCsvDto dto) {
+        if (dto == null) return "";
+
+        return Stream.of(extractFeaturedArtists(dto.title()).orElse(""), dto.artist())
+                .filter(Objects::nonNull)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.joining(","));
+    }
+
+    public List<String> splitArtistNames(String artist) {
+        return Arrays.stream(artist.split("(?i)\\s*(?:,|&|feat\\.?|uring|vs\\.?)\\s*"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+    }
+
+    @Named("buildArtists")
+    public List<ArtistEntity> buildArtists(TrackCsvDto dto, @Context Map<String, ArtistEntity> resolvedArtists) {
+        List<String> artistNames = splitArtistNames(extractArtistNames(dto));
+        return artistNames.stream()
+                .map(resolvedArtists::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+}
+package com.example.mp3.infrastructure.client;
+
+import com.example.mp3.domain.port.out.SpotifyClient;
+import com.neovisionaries.i18n.CountryCode;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import se.michaelthelin.spotify.SpotifyApi;
+import se.michaelthelin.spotify.model_objects.specification.Artist;
+import se.michaelthelin.spotify.model_objects.specification.Track;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class SpotifyAdapter implements SpotifyClient {
+
+    private final SpotifyApi spotifyApi;
+
+    @Override
+    public List<Track> searchForTracks(String trackName) {
+        log.info("Started search with item: {}", trackName);
+        try {
+            List<Track> response = Arrays.stream(spotifyApi
+                            .searchTracks(trackName)
+                            .build()
+                            .execute()
+                            .getItems())
+                    .toList();
+//            log.info("Got response with item: {}", response.get(0).getName());
+            return response;
+
+        } catch (Exception ex) {
+            log.error("Spotify search failed: {}", ex.getMessage());
+        }
+        return List.of();
+    }
+
+    @Override
+    public List<Track> fetchSpotifyTrackById(String artistId) {
+        try {
+//            log.info("Starting searching track by artist id: {}", artistId);
+            return List.of(spotifyApi.getArtistsTopTracks(artistId, CountryCode.valueOf("US"))
+                    .build()
+                    .execute());
+
+        } catch (Exception ex) {
+            log.error("Spotify search failed: {}, {}",artistId, ex.getMessage());
+        }
+        return List.of();
+    }
+
+    @Override
+    public List<Artist> findArtistSpotifyId(String artistName) {
+        try {
+            List<Artist> artists =  Arrays.stream(spotifyApi
+                            .searchArtists(artistName)
+                            .build()
+                            .execute()
+                            .getItems())
+                    .toList();
+
+            return artists;
+
+        } catch (Exception ex) {
+            log.error("Spotify search failed: {}", ex.getMessage());
+        }
+        return List.of();
+    }
+}
+package com.example.mp3.infrastructure.csv.config;
+
+import com.univocity.parsers.csv.CsvParser;
+import com.univocity.parsers.csv.CsvParserSettings;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class CsvConfig {
+
+    @Bean
+    public CsvParserSettings csvParserSettings() {
+        CsvParserSettings settings = new CsvParserSettings();
+        settings.setHeaderExtractionEnabled(true);
+        settings.setLineSeparatorDetectionEnabled(true);
+        settings.setIgnoreLeadingWhitespaces(true);
+        settings.setIgnoreTrailingWhitespaces(true);
+        return settings;
+    }
+
+    @Bean
+    public CsvParser csvParser(CsvParserSettings settings) {
+        return new CsvParser(settings);
+    }
+}
+package com.example.mp3.infrastructure.csv.dto;
+
+import lombok.Builder;
+
+@Builder
+public record TrackCsvDto(String title, String artist) {
+}
+package com.example.mp3.infrastructure.csv;
+
+import com.example.mp3.domain.port.out.CsvExtractor;
+import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
+import com.univocity.parsers.common.record.Record;
+import com.univocity.parsers.csv.CsvParser;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.util.List;
+
+@Component
+@RequiredArgsConstructor
+public class TrackCsvExtractor implements CsvExtractor<TrackCsvDto> {
+    private final CsvParser csvParser;
+
+    @Override
+    public List<TrackCsvDto> extract(String csvPath) throws IOException {
+        try (Reader reader = openCsvFile(csvPath)) {
+            List<Record> records = csvParser.parseAllRecords(reader);
+            validateRecords(records, csvPath);
+            return parseData(records);
+        }
+    }
+
+    private Reader openCsvFile(String path) throws IOException {
+        return new FileReader(path);
+    }
+
+    private void validateRecords(List<Record> records, String csvPath) throws IOException {
+        if(records.isEmpty()) throw new IOException("CSV file contains no valid data: " + csvPath);
+    }
+
+    private List<TrackCsvDto> parseData(List<Record> records) {
+        return records.stream()
+                .map(e -> TrackCsvDto.builder()
+                        .title(e.getString("Title"))
+                        .artist(e.getString("Artist"))
+                        .build())
+                .toList();
+    }
+}
+package com.example.mp3.infrastructure.persistance;
+
+import com.example.mp3.domain.model.ArtistEntity;
+import com.example.mp3.domain.model.TrackEntity;
+import com.example.mp3.domain.repository.JpaArtistRepository;
+import com.example.mp3.domain.repository.JpaTrackRepository;
+import com.example.mp3.domain.port.out.SpotifyRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Repository;
+
+import java.util.Collection;
+import java.util.List;
+
+@Slf4j
+@Repository
+@RequiredArgsConstructor
+public class RepositoryAdapter implements SpotifyRepository {
+    private final JpaTrackRepository jpaTrackRepository;
+    private final JpaArtistRepository jpaArtistRepository;
+
+
+    @Override
+    public void saveTrack(TrackEntity track) {
+        jpaTrackRepository.save(track);
+    }
+
+    @Override
+    public boolean isNewTrack(TrackEntity track) {
+        String trackName = track.getTrackName();
+        return jpaTrackRepository.isNewTrack(trackName);
+    }
+
+    @Override
+    public List<TrackEntity> fetchTracksWithMissingSpotifyId() {
+        return jpaTrackRepository.fetchTracksWithMissingSpotifyIdWithArtists();
+    }
+
+    @Override
+    public List<TrackEntity> fetchALlTracks() {
+        return jpaTrackRepository.findAll();
+    }
+
+    @Override
+    public List<ArtistEntity> fetchArtistsWithNoSpotifyId() {
+        return jpaArtistRepository.fetchArtistsWithMissingSpotifyID();
+    }
+
+    @Override
+    public List<ArtistEntity> fetchAllArtists(){
+        return jpaArtistRepository.findAll();
+    }
+
+    @Override
+    public ArtistEntity saveArtist(ArtistEntity artist) {
+        return jpaArtistRepository.save(artist);
+    }
+
+    @Override
+    public List<ArtistEntity> findAllArtistsByNameIn(Collection<String> names) {
+        return jpaArtistRepository.findAllByName(names);
+    }
+
+    @Override
+    public ArtistEntity save(ArtistEntity build) {
+        return jpaArtistRepository.save(build);
+    }
+
+    @Override
+    public void saveAllTracks(List<TrackEntity> tracks) {
+        jpaTrackRepository.saveAll(tracks);
+        log.info("Saved all tracks.");
+    }
+}
+package com.example.mp3.utils;
+
+import org.apache.commons.text.similarity.JaroWinklerSimilarity;
+
+import static com.example.mp3.utils.Sanitizer.sanitize;
+
+public class Matcher {
+
+    private static final JaroWinklerSimilarity jw = new JaroWinklerSimilarity();
+
+    public static double similarity(String s1, String s2) {
+        return jw.apply(sanitize(s1), sanitize(s2));
+    }
+}
+package com.example.mp3.utils;
+
+public class Sanitizer {
+
+    public static String sanitize(String s) {
+        if (s == null) return "";
+
+        String sanitized =
+                s.toLowerCase()
+                        // remove anything inside (), [], {}
+                        .replaceAll("[({\\[].*?[)}\\]]", "")
+                        // remove punctuation except letters/numbers/spaces
+                        .replaceAll("[^\\p{L}\\p{N}\\s]", "")
+                        // collapse multiple spaces
+                        .replaceAll("\\s+", " ")
+                        .trim();
+
+        return sanitized;
+    }
+}
+package com.example.mp3;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Mp3Application {
+
+	public static void main(String[] args) {
+		SpringApplication.run(Mp3Application.class, args);
+	}
+
+}
+spring:
+  application:
+    name: Music-Downloader
+
+  datasource:
+    url: jdbc:h2:file:./data/demo-db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    # show-sql: true
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.5.5</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.example.mp3</groupId>
+	<artifactId>Music-Downloader</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>Music-Downloader</name>
+	<description>A Spring Boot application that automates the process of importing songs from a CSV file, storing them in a database, looking up download URLs, and downloading them.</description>
+	<url/>
+	<licenses>
+		<license/>
+	</licenses>
+	<developers>
+		<developer/>
+	</developers>
+	<scm>
+		<connection/>
+		<developerConnection/>
+		<tag/>
+		<url/>
+	</scm>
+	<properties>
+		<java.version>17</java.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jsoup</groupId>
+			<artifactId>jsoup</artifactId>
+			<version>1.21.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.11.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.16.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.mapstruct</groupId>
+			<artifactId>mapstruct</artifactId>
+			<version>1.6.3</version>
+		</dependency>
+		<dependency>
+			<groupId>com.univocity</groupId>
+			<artifactId>univocity-parsers</artifactId>
+			<version>2.9.1</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-csv</artifactId>
+			<version>2.17.2</version> <!-- use latest stable -->
+		</dependency>
+
+		<!-- WebClient (Reactive HTTP Client) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
+
+		<!-- Spring Security OAuth2 Client -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-client</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>se.michaelthelin.spotify</groupId>
+			<artifactId>spotify-web-api-java</artifactId>
+			<version>9.3.0</version>
+		</dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-text</artifactId>
+            <version>1.10.0</version>
+        </dependency>
+
+
+    </dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>org.mapstruct</groupId>
+							<artifactId>mapstruct-processor</artifactId>
+							<version>1.6.3</version>
+						</path>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+							<version>1.18.32</version>
+						</path>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok-mapstruct-binding</artifactId>
+							<version>0.2.0</version>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<excludes>
+						<exclude>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
+
+shazamlibrary.csv
+Index,TagTime,Title,Artist,URL,TrackKey
+1,2025-08-26,"Numb","Dotan",https://www.shazam.com/track/468163384/numb,468163384

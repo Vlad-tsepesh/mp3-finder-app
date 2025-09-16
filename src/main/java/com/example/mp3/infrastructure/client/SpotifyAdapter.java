@@ -1,21 +1,16 @@
 package com.example.mp3.infrastructure.client;
 
-import com.example.mp3.application.exception.TrackNotFoundException;
 import com.example.mp3.domain.port.out.SpotifyClient;
-import com.example.mp3.infrastructure.client.dto.SpotifyRequest;
-import com.example.mp3.infrastructure.client.dto.SpotifyResponse;
+import com.neovisionaries.i18n.CountryCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hc.core5.http.ParseException;
 import org.springframework.stereotype.Service;
 import se.michaelthelin.spotify.SpotifyApi;
-import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
-import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
-import se.michaelthelin.spotify.model_objects.specification.Paging;
+import se.michaelthelin.spotify.model_objects.specification.Artist;
 import se.michaelthelin.spotify.model_objects.specification.Track;
 
-import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -25,57 +20,53 @@ public class SpotifyAdapter implements SpotifyClient {
     private final SpotifyApi spotifyApi;
 
     @Override
-    public SpotifyResponse searchTracksUrl(SpotifyRequest request) {
+    public List<Track> searchForTracks(String trackName) {
+        log.info("Started search with item: {}", trackName);
         try {
-            Paging<Track> paging = fetchMatchingTracks(request.trackName());
-            return filterTrack(paging, request);
+            List<Track> response = Arrays.stream(spotifyApi
+                            .searchTracks(trackName)
+                            .build()
+                            .execute()
+                            .getItems())
+                    .toList();
+//            log.info("Got response with item: {}", response.get(0).getName());
+            return response;
 
         } catch (Exception ex) {
-            log.error(ex.getMessage());
+            log.error("Spotify search failed: {}", ex.getMessage());
         }
-        return new SpotifyResponse(null);
+        return List.of();
     }
 
-    private Paging<Track> fetchMatchingTracks(String trackName) throws IOException, ParseException, SpotifyWebApiException {
-        return spotifyApi
-                .searchTracks(trackName)
-                .build()
-                .execute();
+    @Override
+    public List<Track> fetchSpotifyTrackById(String artistId) {
+        try {
+//            log.info("Starting searching track by artist id: {}", artistId);
+            return List.of(spotifyApi.getArtistsTopTracks(artistId, CountryCode.valueOf("US"))
+                    .build()
+                    .execute());
+
+        } catch (Exception ex) {
+            log.error("Spotify search failed: {}, {}",artistId, ex.getMessage());
+        }
+        return List.of();
     }
 
-    private SpotifyResponse filterTrack(Paging<Track> trackPaging, SpotifyRequest request) {
-        return Arrays.stream(trackPaging.getItems())
-                .filter(track -> existsByArtist(track, request.artist()))
-                .filter(track -> existsByTitle(track, request.title()))
-                .findFirst()
-                .map(SpotifyAdapter::buildResponse)
-                .orElseThrow(() -> new TrackNotFoundException("Track not found: " + request.trackName()));
-    }
+    @Override
+    public List<Artist> findArtistSpotifyId(String artistName) {
+        try {
+            List<Artist> artists =  Arrays.stream(spotifyApi
+                            .searchArtists(artistName)
+                            .build()
+                            .execute()
+                            .getItems())
+                    .toList();
 
-    private static SpotifyResponse buildResponse(Track track) {
-        SpotifyResponse response =  SpotifyResponse.builder()
-                .uri(track.getId())
-                .build();
+            return artists;
 
-        log.info("ID found : {}", response.uri());
-        return response;
-    }
-
-    private boolean matchesSpotifyRequest(Track track, SpotifyRequest request){
-        return true;
-    }
-
-    private boolean existsByArtist(Track track, String expectedArtist) {
-        return Arrays.stream(track.getAlbum().getArtists()).allMatch(
-                artist -> matchByAnyArtist(artist, expectedArtist));
-    }
-
-    private boolean matchByAnyArtist(ArtistSimplified artistSimplified, String expectedArtist) {
-        return Arrays.stream(expectedArtist.split("&"))
-                .anyMatch(a -> a.trim().equalsIgnoreCase(artistSimplified.getName().trim()));
-    }
-
-    private boolean existsByTitle(Track track, String expectedTitle) {
-        return track.getName().equalsIgnoreCase(expectedTitle.trim());
+        } catch (Exception ex) {
+            log.error("Spotify search failed: {}", ex.getMessage());
+        }
+        return List.of();
     }
 }
