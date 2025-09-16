@@ -5,12 +5,14 @@ import com.example.mp3.domain.model.TrackEntity;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 public interface SpotifyRepository {
     void saveTrack(TrackEntity track);
+
     boolean isNewTrack(TrackEntity track);
+
     List<TrackEntity> fetchTracksWithMissingSpotifyId();
+
     List<TrackEntity> fetchALlTracks();
 
     List<ArtistEntity> fetchArtistsWithNoSpotifyId();

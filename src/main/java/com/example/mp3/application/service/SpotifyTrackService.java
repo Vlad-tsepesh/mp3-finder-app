@@ -89,47 +89,5 @@ public class SpotifyTrackService {
                 .map(nameExtractor)
                 .collect(Collectors.joining(", "));
     }
-
-    //    public Optional<Track> findBestMatch(TrackEntity entity, List<Track> candidates) {
-//        String title = entity.getTitle();
-//        String artist = entity.getArtists().stream()
-//                .map(ArtistEntity::getName)
-//                .collect(Collectors.joining(" "));
-//
-//        return candidates.stream()
-//                .map(track -> {
-//                    double titleScore = wordMatchScore(track.getName(), title);
-//                    double artistScore = wordMatchScore(
-//                            Arrays.stream(track.getArtists())
-//                                    .map(ArtistSimplified::getName)
-//                                    .collect(Collectors.joining(" ")),
-//                            artist
-//                    );
-//
-//                    double totalScore = (titleScore + artistScore) / 2.0; // average
-//                    return Map.entry(track, totalScore);
-//                })
-//                .filter(entry -> entry.getValue() >= MATCH_THRESHOLD)
-//                .max(Map.Entry.comparingByValue())
-//                .map(Map.Entry::getKey);
-//    }
-//
-//    private static double wordMatchScore(String a, String b) {
-//        Set<String> w1 = normalizeWords(sanitize(a));
-//        Set<String> w2 = normalizeWords(sanitize(b));
-//
-//        if (w1.isEmpty() || w2.isEmpty()) return 0.0;
-//
-//        long common = w1.stream().filter(w2::contains).count();
-//        return (double) common / Math.max(w1.size(), w2.size());
-//    }
-//
-//    private static Set<String> normalizeWords(String input) {
-//        return Arrays.stream(input.toLowerCase().split("\\s+"))   // split on spaces
-//                .map(word -> word.replaceAll("[^a-z0-9]", ""))    // strip symbols
-//                .filter(w -> !w.isBlank())                        // ignore empties
-//                .collect(Collectors.toSet());
-//    }
-
 }
 

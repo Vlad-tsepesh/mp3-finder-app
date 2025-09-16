@@ -5,6 +5,7 @@ import com.example.mp3.domain.model.ArtistEntity;
 import com.example.mp3.domain.model.TrackEntity;
 import com.example.mp3.domain.port.out.CsvExtractor;
 import com.example.mp3.domain.port.out.SpotifyRepository;
+import com.example.mp3.domain.service.TrackNameService;
 import com.example.mp3.infrastructure.csv.dto.TrackCsvDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.example.mp3.Test.splitArtistNames;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -30,6 +29,7 @@ public class Mp3Service {
     private final SpotifyRepository repository;
     private final SpotifyTrackService trackService;
     private final SpotifyArtistService artistService;
+    private final TrackNameService trackNameService;
 
     public void downloadMp3(String filePath) throws IOException {
         importFromCsv(filePath);
@@ -55,7 +55,7 @@ public class Mp3Service {
     public void mapAndSaveTracks(List<TrackCsvDto> dtos) {
 
         Set<String> allNames = dtos.stream()
-                .flatMap(dto -> splitArtistNames(dto.artist()).stream())
+                .flatMap(dto -> trackNameService.splitArtistNames(dto.artist()).stream())
                 .collect(Collectors.toSet());
 
         Map<String, ArtistEntity> resolvedArtists = repository.findAllArtistsByNameIn(allNames)

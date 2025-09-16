@@ -47,7 +47,7 @@ public class TrackNameService {
                 .collect(Collectors.joining(","));
     }
 
-    private List<String> splitArtistNames(String artist) {
+    public List<String> splitArtistNames(String artist) {
         return Arrays.stream(artist.split("(?i)\\s*(?:,|&|feat\\.?|uring|vs\\.?)\\s*"))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())

@@ -71,5 +71,4 @@ public class RepositoryAdapter implements SpotifyRepository {
         jpaTrackRepository.saveAll(tracks);
         log.info("Saved all tracks.");
     }
-
 }
